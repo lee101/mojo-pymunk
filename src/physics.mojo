@@ -1,13 +1,11 @@
 """Numerical kernels and the C ABI used by the Python package."""
 
-from std.algorithm import parallelize
-from std.gpu.host import DeviceContext
 from std.math import cos, sin, sqrt
 from std.memory import alloc, stack_allocation
 from std.sys.info import simd_width_of
 
 comptime Ptr = UnsafePointer[Float64, AnyOrigin[mut=True]]
-comptime ContextPtr = UnsafePointer[DeviceContext, AnyOrigin[mut=True]]
+comptime ContextPtr = UnsafePointer[UInt8, AnyOrigin[mut=True]]
 comptime STRIDE = 16
 
 
@@ -22,9 +20,10 @@ def clamp(value: Float64, lo: Float64, hi: Float64) -> Float64:
 @export("mp_create_cpu_context")
 def mp_create_cpu_context() abi("C") -> Int:
     try:
-        var ctx = DeviceContext(api="cpu")
-        var holder = alloc[DeviceContext](1)
-        holder.unsafe_write(ctx)
+        # The standalone Mojo toolchain no longer exposes a CPU DeviceContext.
+        # Retain an allocated token for the opaque handle used by Python.
+        var holder = alloc[UInt8](1)
+        holder.unsafe_write(0)
         return Int(holder)
     except:
         return 0
@@ -35,7 +34,6 @@ def mp_destroy_cpu_context(context_addr: Int) abi("C"):
     if context_addr == 0:
         return
     var holder = ContextPtr(unsafe_from_address=context_addr)
-    holder.unsafe_deinit_pointee()
     holder.free()
 
 
@@ -276,12 +274,11 @@ def mp_point_query_nearest_circle(
         gradient_y = best_dy / center_distance
         point_x += gradient_x * radius
         point_y += gradient_y * radius
-    result.store(
-        0,
-        SIMD[DType.float64, 5](
-            point_x, point_y, best_distance, gradient_x, gradient_y
-        ),
-    )
+    result[0] = point_x
+    result[1] = point_y
+    result[2] = best_distance
+    result[3] = gradient_x
+    result[4] = gradient_y
     return best_index
 
 
@@ -417,12 +414,11 @@ def mp_point_query_nearest_circle_bvh(
         gradient_y = best_dy / center_distance
         point_x += gradient_x * radius
         point_y += gradient_y * radius
-    result.store(
-        0,
-        SIMD[DType.float64, 5](
-            point_x, point_y, best_distance, gradient_x, gradient_y
-        ),
-    )
+    result[0] = point_x
+    result[1] = point_y
+    result[2] = best_distance
+    result[3] = gradient_x
+    result[4] = gradient_y
     return best_index
 
 
@@ -512,25 +508,7 @@ def mp_integrate(
     context_addr: Int,
 ) abi("C"):
     var state = p(state_addr)
-    comptime PARALLEL_THRESHOLD = 131072
-    comptime CHUNK_SIZE = 2048
-    if count < PARALLEL_THRESHOLD or context_addr == 0:
-        integrate_range(
-            state, 0, count, gravity_x, gravity_y, damping, dt
-        )
-        return
-    var chunk_count = (count + CHUNK_SIZE - 1) // CHUNK_SIZE
-
-    @parameter
-    def integrate_chunk(chunk: Int):
-        var start = chunk * CHUNK_SIZE
-        var end = min(start + CHUNK_SIZE, count)
-        integrate_range(
-            state, start, end, gravity_x, gravity_y, damping, dt
-        )
-
-    var context = ContextPtr(unsafe_from_address=context_addr)
-    parallelize[integrate_chunk](chunk_count, context[])
+    integrate_range(state, 0, count, gravity_x, gravity_y, damping, dt)
 
 
 def body_point(
