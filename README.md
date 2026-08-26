@@ -89,18 +89,22 @@ Linux x86-64, Python 3.13.14, and Pymunk 7.3.0:
 
 | case | mojo-pymunk | pymunk | result |
 | --- | ---: | ---: | ---: |
-| `Space.step`, 50k bodies | 0.55 ms | 1.50 ms | 2.72x faster |
-| `moments_for_circles`, 1m items | 3.72 ms | 1823.96 ms | 490.25x faster |
-| `moment_for_poly`, 100k vertices | 0.60 ms | 9.02 ms | 15.14x faster |
-| `point_query_nearest`, 20k circles | 0.02 ms | 0.01 ms | 1.61x slower |
+| `Space.step`, 50k bodies | 0.65 ms | 1.68 ms | 2.59x faster |
+| `moments_for_circles`, 1m items | 3.79 ms | 1742.85 ms | 460.26x faster |
+| `moment_for_poly`, 100k vertices | 0.65 ms | 6.95 ms | 10.68x faster |
+| `point_query_nearest`, 20k circles | 0.01 ms | 0.01 ms | 1.59x faster |
 
 These numbers include Python boundary costs. Bulk geometry wins because a
 contiguous array crosses into one Mojo loop instead of making a Python/CFFI
 conversion per item or vertex. Body stepping keeps callback bookkeeping out of
-the hot path, skips trigonometry for the common zero-center-of-gravity case,
-and uses chunked CPU parallelism only above 131,072 bodies. Nearest-circle
-queries traverse a cached balanced BVH and scan its structure-of-arrays leaves
-with native-width SIMD plus a scalar remainder.
+the hot path and skips trigonometry for the common zero-center-of-gravity case.
+Nearest-circle queries traverse a cached balanced BVH and scan its
+structure-of-arrays leaves with native-width SIMD plus a scalar remainder. The
+default-filter scan avoids unused filter loads, and persistent query arrays keep
+their validated NumPy addresses cached for zero-copy FFI calls.
+
+No query parallelism is used: the BVH leaves contain at most eight circles and
+the full call takes only microseconds, so thread-launch overhead dominates.
 
 No GPU path is included. The benchmarked integration, query, and mass-property
 kernels are below roughly two floating-point operations per byte moved. The

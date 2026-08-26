@@ -156,6 +156,11 @@ def test_point_query_nearest_bvh_tail_and_filters():
     assert our_shapes.index(a.shape) == their_shapes.index(b.shape)
     assert a.point == pytest.approx(b.point)
     assert a.distance == pytest.approx(b.distance)
+    a = ours.point_query_nearest((0.125, 0.25), 100, mojo.ShapeFilter())
+    b = theirs.point_query_nearest((0.125, 0.25), 100, pymunk.ShapeFilter())
+    assert our_shapes.index(a.shape) == their_shapes.index(b.shape)
+    assert a.point == pytest.approx(b.point)
+    assert a.distance == pytest.approx(b.distance)
 
 
 def test_circle_circle_contact_parity():

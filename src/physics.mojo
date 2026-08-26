@@ -306,6 +306,11 @@ def mp_point_query_nearest_circle_bvh(
     stack[0] = 0
     var best_index = -1
     var best_distance = max_distance
+    var unfiltered = (
+        query_group == 0
+        and query_categories == 0xFFFFFFFF
+        and query_mask == 0xFFFFFFFF
+    )
     while stack_size > 0:
         stack_size -= 1
         var node = stack[stack_size]
@@ -357,14 +362,16 @@ def mp_point_query_nearest_circle_bvh(
             var distances = sqrt(circle_dx * circle_dx + circle_dy * circle_dy) - radii
             for lane in range(W):
                 var index = i + lane
-                var group = Int(data[3 * count + index])
-                var categories = Int(data[4 * count + index])
-                var mask = Int(data[5 * count + index])
-                var rejected = (
-                    (query_group != 0 and query_group == group)
-                    or (categories & query_mask) == 0
-                    or (query_categories & mask) == 0
-                )
+                var rejected = False
+                if not unfiltered:
+                    var group = Int(data[3 * count + index])
+                    var categories = Int(data[4 * count + index])
+                    var mask = Int(data[5 * count + index])
+                    rejected = (
+                        (query_group != 0 and query_group == group)
+                        or (categories & query_mask) == 0
+                        or (query_categories & mask) == 0
+                    )
                 var distance = distances[lane]
                 if (
                     not rejected
@@ -375,14 +382,16 @@ def mp_point_query_nearest_circle_bvh(
                     best_distance = distance
             i += W
         while i < end:
-            var group = Int(data[3 * count + i])
-            var categories = Int(data[4 * count + i])
-            var mask = Int(data[5 * count + i])
-            var rejected = (
-                (query_group != 0 and query_group == group)
-                or (categories & query_mask) == 0
-                or (query_categories & mask) == 0
-            )
+            var rejected = False
+            if not unfiltered:
+                var group = Int(data[3 * count + i])
+                var categories = Int(data[4 * count + i])
+                var mask = Int(data[5 * count + i])
+                rejected = (
+                    (query_group != 0 and query_group == group)
+                    or (categories & query_mask) == 0
+                    or (query_categories & mask) == 0
+                )
             var circle_dx = query_x - data[i]
             var circle_dy = query_y - data[count + i]
             var distance = (

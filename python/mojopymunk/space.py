@@ -22,8 +22,11 @@ class Space:
         self._circle_query_shapes: list[Circle] = []
         self._noncircle_query_shapes: list[Shape] = []
         self._circle_query_data = np.empty((6, 0), dtype=np.float64)
+        self._circle_query_data_addr = 0
         self._circle_query_nodes = None
+        self._circle_query_nodes_addr = 0
         self._point_query_result = np.empty(5, dtype=np.float64)
+        self._point_query_result_addr = addr(self._point_query_result)
         self._state = np.zeros((1, 16), dtype=np.float64)
         self.static_body = Body(body_type=Body.STATIC)
         self._state[0] = self.static_body._state
@@ -259,6 +262,10 @@ class Space:
             )
         self._circle_query_shapes = circles
         self._circle_query_data = data
+        self._circle_query_data_addr = addr(data)
+        self._circle_query_nodes_addr = (
+            addr(self._circle_query_nodes) if self._circle_query_nodes is not None else 0
+        )
         self._query_dirty = False
 
     def point_query(self, point, max_distance: float, shape_filter: ShapeFilter):
@@ -275,15 +282,14 @@ class Space:
         query = Vec2d(*point)
         self._ensure_circle_query_cache()
         best_shape = None
-        best_values = None
         best_distance = float(max_distance)
         if self._circle_query_shapes:
             result = self._point_query_result
             if self._circle_query_nodes is not None:
                 index = lib().mp_point_query_nearest_circle_bvh(
-                    addr(self._circle_query_data),
+                    self._circle_query_data_addr,
                     len(self._circle_query_shapes),
-                    addr(self._circle_query_nodes),
+                    self._circle_query_nodes_addr,
                     self._circle_query_nodes.shape[1],
                     query.x,
                     query.y,
@@ -291,11 +297,11 @@ class Space:
                     shape_filter.group,
                     shape_filter.categories,
                     shape_filter.mask,
-                    addr(result),
+                    self._point_query_result_addr,
                 )
             else:
                 index = lib().mp_point_query_nearest_circle(
-                    addr(self._circle_query_data),
+                    self._circle_query_data_addr,
                     len(self._circle_query_shapes),
                     query.x,
                     query.y,
@@ -303,19 +309,18 @@ class Space:
                     shape_filter.group,
                     shape_filter.categories,
                     shape_filter.mask,
-                    addr(result),
+                    self._point_query_result_addr,
                 )
             if index >= 0:
                 best_shape = self._circle_query_shapes[index]
-                best_values = tuple(result)
                 best_distance = float(result[2])
         best = None
         if best_shape is not None:
             best = PointQueryInfo(
                 best_shape,
-                Vec2d(best_values[0], best_values[1]),
+                Vec2d(result[0], result[1]),
                 best_distance,
-                Vec2d(best_values[3], best_values[4]),
+                Vec2d(result[3], result[4]),
             )
         for shape in self._noncircle_query_shapes:
             if shape.filter.rejects_collision(shape_filter):
